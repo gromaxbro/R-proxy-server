@@ -28,7 +28,19 @@ func forward(client_conn net.Conn, host string, port int, reader *bufio.Reader, 
 	io.Copy(client_conn, conn)
 	return nil
 }
+func https_coonection(host string, port int, conn net.Conn, reader *bufio.Reader) {
+	target_conn, err := net.Dial("tcp", host+":"+strconv.Itoa(port))
+	if err != nil {
+		fmt.Println("Error dialing", err.Error())
+		return
+	}
+	defer target_conn.Close()
 
+	conn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+
+	go io.Copy(target_conn, reader)
+	io.Copy(conn, target_conn)
+}
 func read_client(conn net.Conn) {
 	fmt.Println(conn.RemoteAddr().String())
 	reader := bufio.NewReader(conn)
@@ -37,7 +49,7 @@ func read_client(conn net.Conn) {
 	methodfound := true
 	havebody := 0
 	var headersBuilder strings.Builder
-
+	is_http := true
 	//host := true
 	for {
 
@@ -63,34 +75,51 @@ func read_client(conn net.Conn) {
 			header := strings.Fields(line)
 			method := header[0]
 			location := header[1]
-			urll, err := url.Parse(location)
-			if err != nil {
-			}
-			fmt.Println(urll.Path)
-			host = urll.Host
-			path := urll.Path
-			if path == "" {
-				path = "/"
-			}
 			version := header[2]
-			fmt.Println("method:", method, "location:", location, "version:", version, host, path)
+
 			methodfound = false
-			//port := 80
-			if strings.Contains(host, ":") {
-				h, pStr, err := net.SplitHostPort(host)
-				if err == nil {
-					host = h
-					if parsedPort, err := strconv.Atoi(pStr); err == nil {
-						port = parsedPort
+
+			if method == "CONNECT" {
+				host = location
+				port = 443 // default for HTTPS
+				is_http = false
+				if strings.Contains(host, ":") {
+					h, pStr, err := net.SplitHostPort(host)
+					if err == nil {
+						host = h
+						if parsedPort, err := strconv.Atoi(pStr); err == nil {
+							port = parsedPort
+						}
+					}
+				}
+			} else { // <-- ADD THIS ELSE BLOCK
+				urll, err := url.Parse(location)
+				if err == nil && urll != nil {
+					if urll.Host != "" {
+						host = urll.Host
+					}
+					path := urll.Path
+					if path == "" {
+						path = "/"
+					}
+					headersBuilder.WriteString(fmt.Sprintf("%s %s %s\r\n", method, path, version))
+				} else {
+					headersBuilder.WriteString(fmt.Sprintf("%s %s %s\r\n", method, location, version))
+				}
+
+				if strings.Contains(host, ":") {
+					h, pStr, err := net.SplitHostPort(host)
+					if err == nil {
+						host = h
+						if parsedPort, err := strconv.Atoi(pStr); err == nil {
+							port = parsedPort
+						}
 					}
 				}
 			}
 
-			//request = method + " " + path + " " + version + "\r\nHost: " + host + "\r\nConnection: close\r\n\r\n"
-			headersBuilder.WriteString(fmt.Sprintf("%s %s %s\r\n", method, path, version))
 			continue
 		}
-
 		if trimmedLine == "" {
 			fmt.Println("GOT END HEADER*******")
 			break
@@ -103,10 +132,12 @@ func read_client(conn net.Conn) {
 	fmt.Println("**********************")
 	fmt.Println(headersBuilder.String())
 	fmt.Println("**********************")
+	defer conn.Close() // <-- ADD THIS to prevent memory/socket leaks
 
-	requestbuf := forward(conn, host, port, reader, havebody, headersBuilder.String())
-	if requestbuf != nil {
-		fmt.Println("no error")
+	if is_http {
+		forward(conn, host, port, reader, havebody, headersBuilder.String())
+	} else {
+		https_coonection(host, port, conn, reader) // <-- CALL IT HERE
 	}
 	//for i := 0; i < havebody; i++ {
 	//	line, err := reader.ReadString('\n') // read till ReadString ('\n')
