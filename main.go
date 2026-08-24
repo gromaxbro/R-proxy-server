@@ -11,16 +11,46 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type config_stk struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username  string   `json:"username"`
+	Password  string   `json:"password"`
+	Blacklist []string `json:"blacklist"`
+}
+
+type analysis struct {
+	mu                sync.Mutex
+	Total_connections int
+	HTTPS_tunnels     int
+	Auth_failures     int
+	Rejected          int
 }
 
 var config config_stk
+var analysis_chart analysis
+var logFile *os.File
+var logMu sync.Mutex
+var err error
 
+func update_analysis(unit int, append int) {
+	analysis_chart.mu.Lock()
+	defer analysis_chart.mu.Unlock()
+	switch unit {
+	case 0:
+		analysis_chart.Total_connections += append
+	case 1:
+		analysis_chart.HTTPS_tunnels += append
+	case 2:
+		analysis_chart.Auth_failures += append
+	case 3:
+		analysis_chart.Rejected += append
+
+	}
+
+}
 func forward(client_conn net.Conn, host string, port int, reader *bufio.Reader, bodycount int, header string) error {
 	dialer := net.Dialer{
 		Timeout: 10 * time.Second,
@@ -44,6 +74,9 @@ func forward(client_conn net.Conn, host string, port int, reader *bufio.Reader, 
 	return nil
 }
 func https_coonection(host string, port int, conn net.Conn, reader *bufio.Reader) {
+	update_analysis(1, 1)
+	defer update_analysis(1, -1)
+
 	dialer := net.Dialer{
 		Timeout: 10 * time.Second,
 	}
@@ -57,9 +90,22 @@ func https_coonection(host string, port int, conn net.Conn, reader *bufio.Reader
 	defer target_conn.Close()
 
 	conn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
-
 	go io.Copy(target_conn, reader)
 	io.Copy(conn, target_conn)
+}
+
+func logs(clientIP string, destination string, protocol string, action string) {
+	logMu.Lock()
+	fmt.Fprintf(
+		logFile,
+		"%s | %s | %s | %s | %s\n",
+		time.Now().Format("2006-01-02 15:04:05"),
+		clientIP,
+		destination,
+		protocol,
+		action,
+	)
+	logMu.Unlock()
 }
 
 func authentication(line string, auth *bool) {
@@ -89,6 +135,8 @@ func authentication(line string, auth *bool) {
 }
 func read_client(conn net.Conn) {
 	fmt.Println(conn.RemoteAddr().String())
+	update_analysis(0, 1)
+	defer update_analysis(0, -1)
 	reader := bufio.NewReader(conn)
 	host := ""
 	port := 80
@@ -184,6 +232,13 @@ func read_client(conn net.Conn) {
 		headersBuilder.WriteString(line)
 
 	}
+	for _, blockedHost := range config.Blacklist {
+		if host == blockedHost {
+			writeProxyError(conn, "403 Forbidden")
+			logs(conn.RemoteAddr().String(), host, "HTTPS", "Rejected")
+			return
+		}
+	}
 	if !auth {
 		conn.Write([]byte(
 			"HTTP/1.1 407 Proxy Authentication Required\r\n" +
@@ -193,7 +248,11 @@ func read_client(conn net.Conn) {
 				"\r\n",
 		))
 		fmt.Println("Invalid protocol")
+		logs(conn.RemoteAddr().String(), "-", "AUTH", "FAILED")
+
+		update_analysis(2, 1)
 	}
+
 	headersBuilder.WriteString("Connection: close\r\n\r\n")
 	fmt.Println("**********************")
 	fmt.Println(headersBuilder.String())
@@ -202,8 +261,12 @@ func read_client(conn net.Conn) {
 
 	if is_http {
 		forward(conn, host, port, reader, havebody, headersBuilder.String())
+		logs(conn.RemoteAddr().String(), host, "HTTP", "ALLOWED")
+
 	} else {
 		https_coonection(host, port, conn, reader) // <-- CALL IT HERE
+		logs(conn.RemoteAddr().String(), host, "HTTPS", "ALLOWED")
+
 	}
 	//for i := 0; i < havebody; i++ {
 	//	line, err := reader.ReadString('\n') // read till ReadString ('\n')
@@ -225,6 +288,33 @@ func writeProxyError(conn net.Conn, status string) {
 
 func main() {
 	fmt.Println("Hello World!")
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			analysis_chart.mu.Lock()
+
+			fmt.Println(
+				"Total Connections:", analysis_chart.Total_connections,
+				"Total Tunnels:", analysis_chart.HTTPS_tunnels,
+				"Auth Failures:", analysis_chart.Auth_failures,
+			)
+
+			analysis_chart.mu.Unlock()
+		}
+	}()
+
+	logFile, err = os.OpenFile(
+		"proxy.log",
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND,
+		0600,
+	)
+	if err != nil {
+		fmt.Println("log file error:", err)
+		return
+	}
+	defer logFile.Close()
 
 	data, err := os.ReadFile("config.json")
 

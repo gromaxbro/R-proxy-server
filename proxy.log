@@ -1,0 +1,14 @@
+2026-08-25 00:41:33 | [::1]:36436 | httpbin.org | HTTP | ALLOWED
+2026-08-25 00:41:38 | [::1]:38768 | httpbin.org | HTTP | ALLOWED
+2026-08-25 00:42:07 | [::1]:43890 | www.youtube.com | HTTP | ALLOWED
+2026-08-25 00:42:22 | [::1]:33838 | youtube.com | HTTPS | Rejected
+2026-08-25 00:43:20 | 127.0.0.1:45824 | www.youtube.com | HTTPS | ALLOWED
+2026-08-25 00:43:24 | 127.0.0.1:45910 | www.google.com | HTTPS | ALLOWED
+2026-08-25 00:43:33 | 127.0.0.1:45894 | www.google.com | HTTPS | ALLOWED
+2026-08-25 00:43:33 | 127.0.0.1:45882 | www.google.com | HTTPS | ALLOWED
+2026-08-25 00:43:33 | 127.0.0.1:45876 | www.google.com | HTTPS | ALLOWED
+2026-08-25 00:43:34 | 127.0.0.1:45922 | www.google.com | HTTPS | ALLOWED
+2026-08-25 00:43:43 | 127.0.0.1:50910 | www.twitch.tv | HTTPS | Rejected
+2026-08-25 00:43:44 | 127.0.0.1:46308 | www.twitch.tv | HTTPS | Rejected
+2026-08-25 00:44:01 | 127.0.0.1:46318 | push.services.mozilla.com | HTTPS | ALLOWED
+2026-08-25 00:44:19 | 127.0.0.1:45796 | rr2---sn-ci5gup-cx3l.googlevideo.com | HTTPS | ALLOWED

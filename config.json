@@ -1,4 +1,9 @@
 {
   "username": "admin",
-  "password": "Ilovecoding1"
+  "password": "Ilovecoding1",
+  "blacklist": [
+    "youtube.com",
+    "www.twitch.tv",
+    "example.com"
+  ]
 }
