@@ -2,6 +2,8 @@
 
 A  HTTP/HTTPS forward proxy built from scratch in Go. The proxy accepts client connections, authenticates users, forwards HTTP requests, and establishes TCP tunnels for HTTPS using the HTTP `CONNECT` method.
 
+blog :- https://blog.brocue.online/post/proxy-server
+
 ## Features
 
 - HTTP forward proxy
